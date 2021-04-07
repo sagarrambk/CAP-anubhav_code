@@ -1,0 +1,34 @@
+{
+    "version": "1.1.0",
+    "emname": "<%= projectName %>-em",
+    "namespace": "<%= emNamespace %>",
+    "options": {
+        "management": true,
+        "messagingrest": true,
+        "messaging": true
+    },
+    "rules": {
+        "topicRules": {
+            "publishFilter": [
+                "${namespace}/*"
+            ],
+            "subscribeFilter": [
+<% if(apiS4HCSO || apiS4HCBP){ -%>
+                "sap/S4HANAOD/<%= emClientId %>/*",
+<% } -%>
+                "${namespace}/*"
+            ]
+        },
+        "queueRules": {
+            "publishFilter": [
+                "${namespace}/*"
+            ],
+            "subscribeFilter": [
+<% if(apiS4HCSO || apiS4HCBP){ -%>
+                "sap/S4HANAOD/<%= emClientId %>/*",
+<% } -%>
+                "${namespace}/*"
+            ]
+        }
+    }
+}

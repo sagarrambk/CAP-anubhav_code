@@ -1,0 +1,90 @@
+{
+<% if(html5repo && !managedAppRouter){ -%>
+    "welcomeFile": "/<%= projectName %>html5/index.html",
+<% if(authentication){ -%>
+    "authenticationMethod": "route",
+<% } else { -%>
+    "authenticationMethod": "none",
+<% } -%>
+    "routes": []
+<% } else { -%>
+<% if(ui){ -%>
+    "welcomeFile": "index.html",
+<% } -%>
+<% if(authentication){ -%>
+    "authenticationMethod": "route",
+<% } else { -%>
+    "authenticationMethod": "none",
+<% } -%>
+    "routes": [
+<% if(hana || api){ -%>
+        {
+            "source": "^/catalog/(.*)$",
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "destination": "srv"
+        }
+<% if(v2support){ -%>
+        ,
+        {
+            "source": "^/v2/catalog/(.*)$",
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "destination": "srv"
+        }
+<% } -%>
+<% if(schemaName !== ''){ -%>
+        ,
+<% } -%>
+<% } -%>
+<% if(schemaName !== ''){ -%>
+        {
+            "source": "^/<%= schemaName %>/(.*)$",
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "destination": "srv"
+        }
+<% } -%>
+<% if(schemaName !== '' && v2support){ -%>
+        ,
+        {
+            "source": "^/v2/<%= schemaName %>/(.*)$",
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "destination": "srv"
+        }
+<% } -%>
+<% if(ui){ -%>
+<% if(hana || api || schemaName !== ''){ -%>
+        ,
+<% } -%>
+        {
+            "source": "^/(.*)$",
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "localDir": "resources"
+        }
+<% } -%>
+    ]
+<% } -%>
+}

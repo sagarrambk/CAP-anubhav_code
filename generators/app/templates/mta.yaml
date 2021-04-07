@@ -1,0 +1,410 @@
+_schema-version: '3.2'
+ID: <%= projectName %>
+version: 0.0.1
+
+parameters:
+  enable-parallel-deployments: true
+
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm install --production
+        - npx -p @sap/cds-dk cds build --production
+
+modules:
+<% if((hana || schemaName !== '') && !multiTenant){ -%>
+  # ---------------- DATABASE DEPLOYER MODULE ------------------
+  - name: <%= projectName %>-db-deployer
+  # ------------------------------------------------------------
+    type: hdb
+    path: gen/db
+    parameters:
+      buildpack: nodejs_buildpack
+      memory: 256M
+      disk-quota: 1024M
+<% if(customDomain !== ""){ -%>
+      domain: <%= customDomain %>
+<% } -%>
+    requires:
+<% if(authentication || api){ -%>
+      - name: <%= projectName %>-uaa
+<% } -%>
+      - name: <%= projectName %>-db
+<% if(schemaName !== ""){ -%>
+      - name: <%= projectName %>-db-<%= schemaName %>
+<% } -%>
+<% } -%>
+
+  # --------------------- SERVER MODULE ------------------------
+  - name: <%= projectName %>-srv
+  # ------------------------------------------------------------
+    type: nodejs
+    path: gen/srv
+    parameters:
+      buildpack: nodejs_buildpack
+      memory: 512M
+      disk-quota: 1024M
+<% if(customDomain !== ""){ -%>
+<% if(multiTenant){ -%>
+      host: <%= projectName %>-srv
+<% } -%>
+      domain: <%= customDomain %>
+<% } -%>
+<% if(api){ -%>
+    properties:
+      ApplicationInterfaceKey: saptest0
+      APIKey: <%= APIKey %>
+<% if(em && !multiTenant && apiS4HCBP){ -%>
+      BusinessPartnerCountry: US
+      BusinessPartnerRole: FLCU01
+<% } -%>
+<% } -%>
+    requires:
+<% if(authentication || api){ -%>
+      - name: <%= projectName %>-uaa
+<% } -%>
+<% if(api){ -%>
+      - name: <%= projectName %>-dest
+<% } -%>
+<% if(em){ -%>
+      - name: <%= projectName %>-em
+<% } -%>
+<% if(applicationLogging){ -%>
+      - name: <%= projectName %>-logging
+<% } -%>
+<% if(multiTenant){ -%>
+      - name: <%= projectName %>-registry
+      - name: <%= projectName %>-sm
+<% } else if (hana || schemaName !== ''){ -%>
+      - name: <%= projectName %>-db
+<% } -%>
+    provides:
+      - name: srv-api
+        properties:
+          srv-url: ${default-url}
+
+<% if((authentication || ui) && !managedAppRouter){ -%>
+  # ------------------ APP ROUTER MODULE -----------------------
+  - name: <%= projectName %>
+  # ------------------------------------------------------------
+    type: approuter.nodejs
+    path: app
+    parameters:
+      memory: 256M
+      disk-quota: 1024M
+<% if(customDomain !== ""){ -%>
+<% if(multiTenant){ -%>
+      host: <%= projectName %>
+<% } -%>
+      domain: <%= customDomain %>
+<% } -%>
+<% if(multiTenant){ -%>
+    properties:
+<% if(customDomain !== ""){ -%>
+      TENANT_HOST_PATTERN: '^(.*).<%= customDomain %>'
+<% } else { -%>
+      TENANT_HOST_PATTERN: '^(.*)-${space}-${app-name}.${default-domain}'
+<% } -%>
+<% } -%>
+    requires:
+<% if(authentication || html5repo){ -%>
+      - name: <%= projectName %>-uaa
+<% } -%>
+<% if(html5repo){ -%>
+      - name: <%= projectName %>-dest
+      - name: <%= projectName %>-html5repo-rt
+<% } else { -%>
+      - name: srv-api
+        group: destinations
+        properties:
+          name: srv
+          url: ~{srv-url}
+          timeout: 60000
+<% if(authentication){ -%>
+          forwardAuthToken: true
+<% } -%>
+<% } -%>
+<% if(applicationLogging){ -%>
+      - name: <%= projectName %>-logging
+<% } -%>
+<% if(multiTenant){ -%>
+    provides:
+      - name: app_api
+        properties:
+          url: ${default-url}
+          application: ${app-name}
+<% } -%>
+<% } -%>
+
+<% if(html5repo){ -%>
+  # ----------- HTML5 APP REPOSITORY APP HTML5 MODULE ----------
+  - name: <%= projectName %>-html5
+  # ------------------------------------------------------------
+    type: html5
+    path: app/resources/html5
+    build-parameters:
+      builder: custom
+      commands:
+        - npm run build
+      supported-platforms: []
+
+<% if(hana){ -%>
+  # ----------- HTML5 APP REPOSITORY APP FIORI MODULE ----------
+  - name: <%= projectName %>-fiori
+  # ------------------------------------------------------------
+    type: html5
+    path: app/resources/fiori
+    build-parameters:
+      builder: custom
+      commands:
+        - npm run build
+      supported-platforms: []
+<% } -%>
+
+  # ----------- HTML5 APP REPOSITORY DEPLOYER MODULE -----------
+  - name: <%= projectName %>-ui-deployer
+  # ------------------------------------------------------------
+    type: com.sap.application.content
+    path: .
+    requires:
+      - name: <%= projectName %>-html5repo
+        parameters:
+          content-target: true
+    build-parameters:
+      build-result: gen/app
+      requires:
+        - artifacts:
+            - html5-content.zip
+          name: <%= projectName %>-html5
+          target-path: gen/app/
+<% if(hana){ -%>
+        - artifacts:
+            - fiori-content.zip
+          name: <%= projectName %>-fiori
+          target-path: gen/app/
+<% } -%>
+
+  # ----- HTML5 APP REPOSITORY DESTINATION CONTENT MODULE ------
+  - name: <%= projectName %>-dest-content
+  # ------------------------------------------------------------
+    type: com.sap.application.content
+    requires:
+      - name: <%= projectName %>-uaa
+        parameters:
+          service-key:
+            name: <%= projectName %>-uaa-sk
+      - name: <%= projectName %>-dest
+        parameters:
+          content-target: true
+      - name: <%= projectName %>-html5repo
+        parameters:
+          service-key:
+            name: <%= projectName %>-html5repo-sk
+    parameters:
+      content:
+        subaccount:
+          existing_destinations_policy: update
+          destinations:
+            - Name: <%= projectName %>-service-<%= projectName %>-uaa
+              ServiceInstanceName: <%= projectName %>-uaa
+              ServiceKeyName: <%= projectName %>-uaa-sk
+              Authentication: OAuth2UserTokenExchange
+              sap.cloud.service: <%= projectName %>-service
+            - Name: <%= projectName %>-service-<%= projectName %>-html5repo
+              ServiceInstanceName: <%= projectName %>-html5repo
+              ServiceKeyName: <%= projectName %>-html5repo-sk
+              sap.cloud.service: <%= projectName %>-service
+    build-parameters:
+      no-source: true
+<% } -%>
+
+resources:
+<% if(authentication || api || html5repo){ -%>
+  # ----------------------- UAA SERVICE ------------------------
+  - name: <%= projectName %>-uaa
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+<% if(multiTenant){ -%>
+      xsuaa-app: ${space}-~{app_api/application}
+      config:
+        xsappname: ${xsuaa-app}
+    properties:
+      XSAPPNAME: ${xsuaa-app}
+    requires: 
+      - name: app_api
+<% } -%>
+<% } -%>
+
+<% if(api || html5repo){ -%>
+  # -------------------- DESTINATION SERVICE -------------------
+  - name: <%= projectName %>-dest
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+<% if(html5repo){ -%>
+    requires:
+      - name: srv-api
+<% } -%>
+    parameters:
+      service: destination
+      service-plan: lite
+      config:
+<% if(html5repo){ -%>
+        HTML5Runtime_enabled: true
+<% } -%>
+<% if(api || html5repo){ -%>
+        init_data:
+          subaccount:
+            existing_destinations_policy: update
+            destinations:
+<% } -%>
+<% if(apiS4HCSO){ -%>
+              - Name: <%= projectName %>-API_SALES_ORDER_SRV
+                Description: SAP S/4HANA Cloud Sales Order (A2X)
+                URL: https://sandbox.api.sap.com
+                Type: HTTP
+                ProxyType: Internet
+                Authentication: NoAuthentication
+                HTML5.DynamicDestination: true
+<% } -%>
+<% if(apiS4HCBP){ -%>
+              - Name: <%= projectName %>-API_BUSINESS_PARTNER
+                Description: SAP S/4HANA Cloud Business Partner (A2X)
+                URL: https://sandbox.api.sap.com
+                Type: HTTP
+                ProxyType: Internet
+                Authentication: NoAuthentication
+                HTML5.DynamicDestination: true
+<% } -%>
+<% if(html5repo){ -%>
+              - Name: <%= projectName %>-srv
+                Description: <%= displayName %> - Server Module
+                URL: ~{srv-api/srv-url}
+                Type: HTTP
+                ProxyType: Internet
+                Authentication: NoAuthentication
+                HTML5.DynamicDestination: true
+<% if(authentication){ -%>
+                HTML5.ForwardAuthToken: true
+<% } -%>
+
+  # ----------- HTML5 APP REPOSITORY HOSTING SERVICE -----------
+  - name: <%= projectName %>-html5repo
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-host
+
+<% if(!managedAppRouter){ -%>
+  # ----------- HTML5 APP REPOSITORY RUNTIME SERVICE -----------
+  - name: <%= projectName %>-html5repo-rt
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-runtime
+<% } -%>
+<% } -%>
+<% } -%>
+
+<% if(apiSFSFRC){ -%>
+  # ----------------- SUCCESSFACTORS API SERVICE ---------------
+  - name: <%= projectName %>-sf-api
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: sap-successfactors-extensibility
+      service-plan: api-access
+      config:
+        systemName: <%= systemName %>
+<% } -%>
+
+<% if(em){ -%>
+  # --------------------- EVENT MESH SERVICE -------------------
+  - name: <%= projectName %>-em
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: enterprise-messaging
+      service-plan: default
+      path: ./em.json
+<% } -%>
+
+<% if((hana || schemaName !== '') && !multiTenant){ -%>
+  # ------------------- HDI CONTAINER SERVICE ------------------
+  - name: <%= projectName %>-db
+  # ------------------------------------------------------------
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+    properties:
+      hdi-service-name: ${service-name}
+
+<% if(schemaName !== ""){ -%>
+  # ------------------- USER-PROVIDED SERVICE ------------------
+  - name: <%= projectName %>-db-<%= schemaName %>
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.existing-service
+    parameters:
+      service-name: <%= projectName %>-db-<%= schemaName %>
+<% } -%>
+<% } -%>
+
+<% if(multiTenant){ -%>
+  # --------------------- REGISTRY SERVICE ---------------------
+  - name: <%= projectName %>-registry
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    requires:
+      - name: <%= projectName %>-uaa
+    parameters:
+      service: saas-registry
+      service-plan: application
+      config:
+        xsappname: ~{<%= projectName %>-uaa/XSAPPNAME}
+        appName: <%= projectName %>
+        displayName: '<%= displayName %>'
+        description: '<%= description %>'
+        appUrls:
+<% if(customDomain !== ""){ -%>
+          onSubscription: https://<%= projectName %>-srv.<%= customDomain %>/mtx/v1/provisioning/tenant/{tenantId}
+<% if(api){ -%>
+          getDependencies: https://<%= projectName %>-srv.<%= customDomain %>/mtx/v1/provisioning/dependencies
+<% } -%>
+<% } else { -%>
+          onSubscription: https://${org}-${space}-<%= projectName %>-srv.${default-domain}/mtx/v1/provisioning/tenant/{tenantId}
+<% if(api){ -%>
+          getDependencies: https://${org}-${space}-<%= projectName %>-srv.${default-domain}/mtx/v1/provisioning/dependencies
+<% } -%>
+<% } -%>
+
+  # ------------------- SERVICE MANAGER SERVICE ----------------
+  - name: <%= projectName %>-sm
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    requires:
+     - name: <%= projectName %>-uaa
+    parameters:
+       service: service-manager
+       service-plan: container
+       polling_timeout_seconds: 240
+       config:
+         acquireTimeoutMillis: max
+         polling_timeout_seconds: 480
+<% } -%>
+
+<% if(applicationLogging){ -%>
+  # ---------------- APPLICATION LOGGING SERVICE ---------------
+  - name: <%= projectName %>-logging
+  # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: application-logs
+      service-plan: lite
+<% } -%>

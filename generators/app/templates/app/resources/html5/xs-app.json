@@ -1,0 +1,80 @@
+{
+    "welcomeFile": "index.html",
+<% if(authentication){ -%>
+    "authenticationMethod": "route",
+<% } else { -%>
+    "authenticationMethod": "none",
+<% } -%>
+    "routes": [
+<% if(hana || api){ -%>
+        {
+            "source": "^/catalog/(.*)$",
+            "csrfProtection": false,
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "destination": "<%= projectName %>-srv"
+        }
+<% if(v2support){ -%>
+        ,
+        {
+            "source": "^/v2/catalog/(.*)$",
+            "csrfProtection": false,
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "destination": "<%= projectName %>-srv"
+        }
+<% } -%>
+<% if(schemaName !== ''){ -%>
+        ,
+<% } -%>
+<% } -%>
+<% if(schemaName !== ''){ -%>
+        {
+            "source": "^/<%= schemaName %>/(.*)$",
+            "csrfProtection": false,
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "destination": "<%= projectName %>-srv"
+        }
+<% } -%>
+<% if(schemaName !== '' && v2support){ -%>
+        ,
+        {
+            "source": "^/v2/<%= schemaName %>/(.*)$",
+            "csrfProtection": false,
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "destination": "<%= projectName %>-srv"
+        }
+<% } -%>
+<% if(hana || api || schemaName !== ''){ -%>
+        ,
+<% } -%>
+        {
+            "source": "^/(.*)$",
+<% if(authentication){ -%>
+            "authenticationType": "xsuaa",
+<% } -%>
+<% if(authorization){ -%>
+            "scope": "$XSAPPNAME.Viewer",
+<% } -%>
+            "service": "html5-apps-repo-rt"
+        }
+    ]
+}
